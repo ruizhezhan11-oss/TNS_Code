@@ -1,19 +1,37 @@
 package org.firstinspires.ftc.teamcode.Auto_Test;
 
+import android.util.Size;
+
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagGameDatabase;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+import org.firstinspires.ftc.vision.opencv.ColorBlobLocatorProcessor;
+
+import java.util.List;
+
 @Autonomous
 public class Auto_Locate extends LinearOpMode {
     DcMotor FL,FR,BL,BR;
+    VisionPortal Camera1 =null;
+    ColorBlobLocatorProcessor ColorSensor1 ;
+    AprilTagProcessor AprilTagProcessor1 ;
     GoBildaPinpointDriver pinpointDriver;
     double x=0,y=0,heading=0;
+    private final Position cameraPosition = new Position(DistanceUnit.INCH, 0, 0, 0, 0);
+    private final YawPitchRollAngles cameraOrientation = new YawPitchRollAngles(AngleUnit.DEGREES, 0, -90, 0, 0);
     public void init_hardware (){
         BL=hardwareMap.get(DcMotor.class,"BL");
         BR=hardwareMap.get(DcMotor.class,"BR");
@@ -54,10 +72,41 @@ public class Auto_Locate extends LinearOpMode {
     public void telemetry(){
         telemetry.addLine(String.format("XYH,%2.1f %2.1f %2.1f",x,y,heading));
     }
+    private void init_Vision(){
+        AprilTagProcessor1 = new AprilTagProcessor.Builder()
+                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary()) // 載入官方賽事 Tag 庫
+                .setDrawTagID(true)               // 顯示 ID
+                .setCameraPose(cameraPosition, cameraOrientation) // 設定相機姿態
+                .setDrawTagOutline(true)          // 繪製外框線
+                .setDrawAxes(true)                // 繪製坐標軸
+                .setDrawCubeProjection(true)      // 繪製 3D 虛擬立方體
+                .build();
+        Camera1 = new VisionPortal.Builder()
+                .setCameraResolution(new Size(1280,720))
+                .setCamera(hardwareMap.get(WebcamName.class,"Camera1"))
+                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
+                .enableLiveView(true)
+                .setAutoStopLiveView(true)
+                .build();
+    }
+
     enum state {
         STEP_1,
         STEP_2
     }
+    private void read_AprilTag(){
+        List<AprilTagDetection> Current = AprilTagProcessor1.getDetections();
+        for(AprilTagDetection Detection : Current){
+            double AP_X = Detection.robotPose.getPosition().x;
+            double AP_Y = Detection.robotPose.getPosition().y;
+            double AP_Z = Detection.robotPose.getPosition().z;
+            int ID = Detection.id;
+            telemetry.addLine(String.format("XYZ %3.1f %3.1f %3.1f",AP_X,AP_Y,AP_Z));
+            telemetry.addData("ID",ID);
+        }
+        telemetry.update();
+    }
+
     double target_x = 72 , target_y = 48 , target_h = 90;
     double tolerance = 2;
     double Kp_drive = 0.01 , Kp_turn = 1.0;
@@ -65,11 +114,12 @@ public class Auto_Locate extends LinearOpMode {
     @Override
     public void runOpMode(){
         init_hardware();
+        init_Vision();
         init_odo();
-            while (opModeIsActive()){
+        while (opModeIsActive()){
             Math_Odo();
-
             state state = Auto_Locate.state.STEP_1;
+            read_AprilTag();
             switch (state) {
                 case STEP_1:
                 double correct_Heading = Math.toRadians(target_h);

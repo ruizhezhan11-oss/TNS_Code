@@ -108,7 +108,7 @@ public class Auto_Locate extends LinearOpMode {
         }
         telemetry.update();
     }
-    private void move (){
+    private void Step_1(){
         double correct_Heading = Math.toRadians(target_h);
         double dx = (target_x - x), dy = (target_y - y), eh = (correct_Heading - heading);
         double dist = Math.hypot(dx, dy); //直角三角形定位
@@ -163,6 +163,31 @@ public class Auto_Locate extends LinearOpMode {
 
         }
     }
+    private void Final_Step (){
+        stateFinal = false;
+        double target_X = 0,target_Y = 0,target_H = 0;
+        double dx = (target_X - x), dy = (target_Y - y), eh = (target_H - heading);
+        double dist = Math.hypot(dx, dy); //直角三角形定位
+        double forward = dx * Math.cos(heading) + dy * Math.sin(heading);
+        double strafe = dx * Math.sin(heading) + dy * Math.cos(heading);
+        eh = Math.atan2(Math.sin(eh), Math.cos(eh));
+        double fwdPower = Range.clip(Kp_drive * forward, -0.5, 0.5);
+        double strPower = Range.clip(Kp_drive * strafe, -0.5, 0.5);
+        double turnPower = Range.clip(Kp_turn * eh, -0.3, 0.3);
+        double fl = fwdPower + strPower + turnPower;
+        double fr = fwdPower - strPower - turnPower;
+        double bl = fwdPower - strPower + turnPower;
+        double br = fwdPower + strPower - turnPower;
+        FL.setPower(fl);
+        FR.setPower(fr);
+        BL.setPower(bl);
+        BR.setPower(br);
+        if(dist < tolerance){
+            telemetry.addLine("Final");
+            telemetry.update();
+            stateFinal = true;
+        }
+    }
 
     double target_x = 72 , target_y = 48 , target_h = 90;
     double tolerance = 2;
@@ -182,7 +207,7 @@ public class Auto_Locate extends LinearOpMode {
             read_AprilTag();
             switch (state) {
                 case STEP_1:
-                move();
+                Step_1();
                 if(stateFinal){
                     state = Auto_Locate.state.STEP_2;
                 }
@@ -195,6 +220,11 @@ public class Auto_Locate extends LinearOpMode {
                     Step_2();
                     if(stateFinal)state = Auto_Locate.state.Final;
                     break;
+                case Final:
+                    Math_Odo();
+                    read_AprilTag();
+                    Final_Step();
+                    if(stateFinal) break;
                 default:
                     telemetry.addLine("This Autonomous is already finished");
             }

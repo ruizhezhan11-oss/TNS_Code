@@ -29,6 +29,7 @@ public class Auto_Locate extends LinearOpMode {
     ColorBlobLocatorProcessor ColorSensor1 ;
     AprilTagProcessor AprilTagProcessor1 ;
     GoBildaPinpointDriver pinpointDriver;
+    double AP_X = 0,AP_Y=0,AP_Z=0;
     double x=0,y=0,heading=0;
     private final Position cameraPosition = new Position(DistanceUnit.INCH, 0, 0, 0, 0);
     private final YawPitchRollAngles cameraOrientation = new YawPitchRollAngles(AngleUnit.DEGREES, 0, -90, 0, 0);
@@ -92,65 +93,110 @@ public class Auto_Locate extends LinearOpMode {
 
     enum state {
         STEP_1,
-        STEP_2
+        STEP_2,
+        Final
     }
     private void read_AprilTag(){
         List<AprilTagDetection> Current = AprilTagProcessor1.getDetections();
         for(AprilTagDetection Detection : Current){
-            double AP_X = Detection.robotPose.getPosition().x;
-            double AP_Y = Detection.robotPose.getPosition().y;
-            double AP_Z = Detection.robotPose.getPosition().z;
+            AP_X = Detection.robotPose.getPosition().x;
+            AP_Y = Detection.robotPose.getPosition().y;
+            AP_Z = Detection.robotPose.getPosition().z;
             int ID = Detection.id;
             telemetry.addLine(String.format("XYZ %3.1f %3.1f %3.1f",AP_X,AP_Y,AP_Z));
             telemetry.addData("ID",ID);
         }
         telemetry.update();
     }
+    private void move (){
+        double correct_Heading = Math.toRadians(target_h);
+        double dx = (target_x - x), dy = (target_y - y), eh = (correct_Heading - heading);
+        double dist = Math.hypot(dx, dy); //直角三角形定位
+        double forward = dx * Math.cos(heading) + dy * Math.sin(heading);
+        double strafe = dx * Math.sin(heading) + dy * Math.cos(heading);
+        eh = Math.atan2(Math.sin(eh), Math.cos(eh));
+        //*誤差調整
+        double fwdPower = Range.clip(Kp_drive * forward, -0.5, 0.5);
+        double strPower = Range.clip(Kp_drive * strafe, -0.5, 0.5);
+        double turnPower = Range.clip(Kp_turn * eh, -0.3, 0.3);
+        //*驅動程式
+        double fl = fwdPower + strPower + turnPower;
+        double fr = fwdPower - strPower - turnPower;
+        double bl = fwdPower - strPower + turnPower;
+        double br = fwdPower + strPower - turnPower;
+        //*馬達
+        FL.setPower(fl);
+        FR.setPower(fr);
+        BL.setPower(bl);
+        BR.setPower(br);
+        //*判別式
+        if(dist < tolerance){
+            telemetry.addLine("第一步結束");
+            telemetry.update();
+            stateFinal = true ;
+
+        }
+    }
+    private void Step_2(){
+        double mx = AP_X - x ,my = AP_Y - y,mz = AP_Z - heading ;
+        double dist = Math.hypot(mx, my); //直角三角形定位
+        double forward = mx * Math.cos(heading) + my * Math.sin(heading);
+        double strafe = mx * Math.sin(heading) + my * Math.cos(heading);
+        mz = Math.atan2(Math.sin(mz), Math.cos(mz));
+        double fwdPower = Range.clip(Kp_drive * forward, -0.5, 0.5);
+        double strPower = Range.clip(Kp_drive * strafe, -0.5, 0.5);
+        double turnPower = Range.clip(Kp_turn * mz, -0.3, 0.3);
+        double fl = fwdPower + strPower + turnPower;
+        double fr = fwdPower - strPower - turnPower;
+        double bl = fwdPower - strPower + turnPower;
+        double br = fwdPower + strPower - turnPower;
+        //*馬達
+        FL.setPower(fl);
+        FR.setPower(fr);
+        BL.setPower(bl);
+        BR.setPower(br);
+        //*判別式
+        if(dist < tolerance){
+            telemetry.addLine("第二步結束");
+            telemetry.update();
+            stateFinal = true ;
+
+        }
+    }
 
     double target_x = 72 , target_y = 48 , target_h = 90;
     double tolerance = 2;
     double Kp_drive = 0.01 , Kp_turn = 1.0;
+    boolean stateFinal = false;
 
     @Override
     public void runOpMode(){
         init_hardware();
         init_Vision();
         init_odo();
+        state state = Auto_Locate.state.STEP_1;
+        waitForStart();
         while (opModeIsActive()){
             Math_Odo();
-            state state = Auto_Locate.state.STEP_1;
+
             read_AprilTag();
             switch (state) {
                 case STEP_1:
-                double correct_Heading = Math.toRadians(target_h);
-                double dx = (target_x - x), dy = (target_y - y), eh = (correct_Heading - heading);
-                double dist = Math.hypot(dx, dy); //直角三角形定位
-                double forward = dx * Math.cos(heading) + dy * Math.sin(heading);
-                double strafe = dx * Math.sin(heading) + dy * Math.cos(heading);
-                eh = Math.atan2(Math.sin(eh), Math.cos(eh));
-                //*誤差調整
-                double fwdPower = Range.clip(Kp_drive * forward, -0.5, 0.5);
-                double strPower = Range.clip(Kp_drive * strafe, -0.5, 0.5);
-                double turnPower = Range.clip(Kp_turn * eh, -0.3, 0.3);
-                //*驅動程式
-                double fl = fwdPower + strPower + turnPower;
-                double fr = fwdPower - strPower - turnPower;
-                double bl = fwdPower - strPower + turnPower;
-                double br = fwdPower + strPower - turnPower;
-                //*馬達
-                FL.setPower(fl);
-                FR.setPower(fr);
-                BL.setPower(bl);
-                BR.setPower(br);
-                //*判別式
-                if(dist < tolerance){
-                    telemetry.addLine("第一步結束");
-                    telemetry.update();
+                move();
+                if(stateFinal){
                     state = Auto_Locate.state.STEP_2;
                 }
                 break;
+                //*=======================*\\
                 case STEP_2:
+                    stateFinal=false;
+                    Math_Odo();
+                    read_AprilTag();
+                    Step_2();
+                    if(stateFinal)state = Auto_Locate.state.Final;
                     break;
+                default:
+                    telemetry.addLine("This Autonomous is already finished");
             }
         }
     }

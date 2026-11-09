@@ -29,10 +29,7 @@ import java.util.List;
 @Autonomous
 public class Auto_Locate extends LinearOpMode {
     DcMotor FL,FR,BL,BR;
-    VisionPortal Camera1 =null;
     Limelight3A limelight = null;
-    ColorBlobLocatorProcessor ColorSensor1 ;
-    AprilTagProcessor AprilTagProcessor1 ;
     GoBildaPinpointDriver pinpointDriver;
     double AP_X = 0,AP_Y=0,AP_Z=0;
     double x=0,y=0,heading=0;
@@ -84,23 +81,6 @@ public class Auto_Locate extends LinearOpMode {
         limelight.setPollRateHz(100);   // 每秒更新次數
         limelight.pipelineSwitch(0);    // 網頁介面中的 pipeline 編號
         limelight.start();
-        // 一定要 start,否則收不到資料
-
-        AprilTagProcessor1 = new AprilTagProcessor.Builder()
-                .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary()) // 載入官方賽事 Tag 庫
-                .setDrawTagID(true)               // 顯示 ID
-                .setCameraPose(cameraPosition, cameraOrientation) // 設定相機姿態
-                .setDrawTagOutline(true)          // 繪製外框線
-                .setDrawAxes(true)                // 繪製坐標軸
-                .setDrawCubeProjection(true)      // 繪製 3D 虛擬立方體
-                .build();
-        Camera1 = new VisionPortal.Builder()
-                .setCameraResolution(new Size(1280,720))
-                .setCamera(hardwareMap.get(WebcamName.class,"Camera1"))
-                .setStreamFormat(VisionPortal.StreamFormat.YUY2)
-                .enableLiveView(true)
-                .setAutoStopLiveView(true)
-                .build();
     }
 
     enum state {

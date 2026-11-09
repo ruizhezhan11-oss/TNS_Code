@@ -3,6 +3,9 @@ package org.firstinspires.ftc.teamcode.Auto_Test;
 import android.util.Size;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -12,6 +15,7 @@ import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.Position;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.vision.VisionPortal;
@@ -26,11 +30,13 @@ import java.util.List;
 public class Auto_Locate extends LinearOpMode {
     DcMotor FL,FR,BL,BR;
     VisionPortal Camera1 =null;
+    Limelight3A limelight = null;
     ColorBlobLocatorProcessor ColorSensor1 ;
     AprilTagProcessor AprilTagProcessor1 ;
     GoBildaPinpointDriver pinpointDriver;
     double AP_X = 0,AP_Y=0,AP_Z=0;
     double x=0,y=0,heading=0;
+    int ID_Code = 0;
     private final Position cameraPosition = new Position(DistanceUnit.INCH, 0, 0, 0, 0);
     private final YawPitchRollAngles cameraOrientation = new YawPitchRollAngles(AngleUnit.DEGREES, 0, -90, 0, 0);
     public void init_hardware (){
@@ -74,6 +80,12 @@ public class Auto_Locate extends LinearOpMode {
         telemetry.addLine(String.format("XYH,%2.1f %2.1f %2.1f",x,y,heading));
     }
     private void init_Vision(){
+        limelight = hardwareMap.get(Limelight3A.class, "limelight");
+        limelight.setPollRateHz(100);   // 每秒更新次數
+        limelight.pipelineSwitch(0);    // 網頁介面中的 pipeline 編號
+        limelight.start();
+        // 一定要 start,否則收不到資料
+
         AprilTagProcessor1 = new AprilTagProcessor.Builder()
                 .setTagLibrary(AprilTagGameDatabase.getCurrentGameTagLibrary()) // 載入官方賽事 Tag 庫
                 .setDrawTagID(true)               // 顯示 ID
@@ -97,16 +109,24 @@ public class Auto_Locate extends LinearOpMode {
         Final
     }
     private void read_AprilTag(){
-        List<AprilTagDetection> Current = AprilTagProcessor1.getDetections();
-        for(AprilTagDetection Detection : Current){
-            AP_X = Detection.robotPose.getPosition().x;
-            AP_Y = Detection.robotPose.getPosition().y;
-            AP_Z = Detection.robotPose.getPosition().z;
-            int ID = Detection.id;
+        limelight.updateRobotOrientation(heading);
+        LLResult result = limelight.getLatestResult();
+        if(result !=null && result.isValid()){
+            Pose3D pose = result.getBotpose_MT2();
+            if(pose !=null){
+                Position p = pose.getPosition().toUnit(DistanceUnit.INCH);
+                AP_X = p.x;
+                AP_Y = p.y;
+                AP_Z = pose.getOrientation().getYaw(AngleUnit.DEGREES);
+            }
+            for (LLResultTypes.FiducialResult f : result.getFiducialResults()) {
+                ID_Code = f.getFiducialId();   // 看到的 Tag ID
+            }
             telemetry.addLine(String.format("XYZ %3.1f %3.1f %3.1f",AP_X,AP_Y,AP_Z));
-            telemetry.addData("ID",ID);
+            telemetry.addData("ID",ID_Code);
+            telemetry.update();
         }
-        telemetry.update();
+
     }
     private void Step_1(){
         double correct_Heading = Math.toRadians(target_h);
@@ -202,9 +222,8 @@ public class Auto_Locate extends LinearOpMode {
         state state = Auto_Locate.state.STEP_1;
         waitForStart();
         while (opModeIsActive()){
-            Math_Odo();
-
-            read_AprilTag();
+            Math_Odo(); //擷取Pinpoint
+            read_AprilTag(); //擷取AprilTag
             switch (state) {
                 case STEP_1:
                 Step_1();
@@ -215,15 +234,16 @@ public class Auto_Locate extends LinearOpMode {
                 //*=======================*\\
                 case STEP_2:
                     stateFinal=false;
-                    Math_Odo();
-                    read_AprilTag();
-                    Step_2();
+                    Math_Odo(); //擷取Pinpoint
+                    read_AprilTag(); //擷取AprilTag
+                    Step_2(); //Step 2主程式
                     if(stateFinal)state = Auto_Locate.state.Final;
                     break;
+                //*========================*\\
                 case Final:
-                    Math_Odo();
-                    read_AprilTag();
-                    Final_Step();
+                    Math_Odo(); //擷取Pinpoint
+                    read_AprilTag(); //擷取AprilTag
+                    Final_Step(); //Final Step 主程式
                     if(stateFinal) break;
                 default:
                     telemetry.addLine("This Autonomous is already finished");
